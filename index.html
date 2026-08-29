@@ -246,6 +246,10 @@
 
     window.addEventListener('pointermove', (e) => {
       if (e.pointerType !== 'mouse') return;
+      if (document.getElementById('immersiveShowcase').classList.contains('active')) {
+        resetHover();
+        return;
+      }
       mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
       mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
       tooltip.style.left = e.clientX + 'px';
@@ -295,6 +299,7 @@
       const dt = Date.now() - pointerDownTime;
       pointerDownPos = null;
       if (dist > 10 || dt > 600) return;
+      if (document.getElementById('immersiveShowcase').classList.contains('active')) return;
 
       const tapMouse = new THREE.Vector2(
         (e.clientX / window.innerWidth) * 2 - 1,
