@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tour Arquitectónico Interactivo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #050505; color: #ffffff; }
+    html, body { width: 100%; height: 100%; }
+    #canvas-container { width: 100vw; height: 100vh; height: 100dvh; display: block; }
+    .top-bar { position: absolute; top: 20px; left: 20px; display: flex; align-items: center; gap: 12px; z-index: 20; }
+    .brand-title { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; font-weight: 700; color: #ffffff; border: 1px solid #ffffff; padding: 8px 14px; background: #000000; }
+    .nav-bar { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; background: rgba(10, 10, 10, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.25); padding: 6px; max-width: 90vw; overflow-x: auto; z-index: 20; border-radius: 4px; }
+    .nav-btn { background: transparent; border: 1px solid transparent; color: #888888; padding: 8px 14px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.2s ease; }
+    .nav-btn:hover { color: #ffffff; border-color: rgba(255, 255, 255, 0.3); }
+    .nav-btn.active { background: #ffffff; color: #000000; font-weight: 700; }
+    .immersive-showcase { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; height: 100dvh; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); z-index: 40; opacity: 0; pointer-events: none; transition: opacity 0.35s ease; }
+    .immersive-showcase.active { opacity: 1; pointer-events: auto; }
+    .showcase-card { position: relative; width: 84vw; max-width: 1080px; background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(28px); -webkit-backdrop-filter: blur(28px); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 8px; padding: 20px; box-shadow: 0 30px 60px rgba(0, 0, 0, 0.7), inset 0 0 0 1px rgba(255, 255, 255, 0.1); transform: scale(0.95) translateY(12px); transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
+    .immersive-showcase.active .showcase-card { transform: scale(1) translateY(0); }
+    .showcase-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding: 0 4px; }
+    .showcase-title { font-size: 16px; letter-spacing: 2px; text-transform: uppercase; font-weight: 700; }
+    .close-showcase-btn { background: rgba(0, 0, 0, 0.6); border: 1px solid rgba(255, 255, 255, 0.4); color: #ffffff; padding: 7px 16px; font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; cursor: pointer; transition: all 0.2s; border-radius: 4px; }
+    .close-showcase-btn:hover { background: #ffffff; color: #000000; border-color: #ffffff; }
+    .showcase-media { width: 100%; height: 62vh; min-height: 400px; background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+    .showcase-media img { width: 100%; height: 100%; object-fit: cover; }
+    #tooltip { position: absolute; padding: 6px 12px; background: rgba(0, 0, 0, 0.9); border: 1px solid #ffffff; color: #ffffff; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; pointer-events: none; opacity: 0; transition: opacity 0.15s ease; z-index: 30; transform: translate(12px, 12px); border-radius: 2px; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+</head>
+<body>
+  <div class="top-bar"><div class="brand-title">Tour Arquitectónico</div></div>
+  <div id="canvas-container"></div>
+  <div id="tooltip"></div>
+  <div class="nav-bar" id="navBar"><button class="nav-btn active" onclick="goToArea('general')">General</button></div>
+  <div class="immersive-showcase" id="immersiveShowcase" onclick="handleBackdropClick(event)">
+    <div class="showcase-card">
+      <div class="showcase-header">
+        <div>
+          <h2 class="showcase-title" id="showcaseTitle">Espacio</h2>
+        </div>
+        <button class="close-showcase-btn" onclick="closeShowcase()">Cerrar &times;</button>
+      </div>
+      <div class="showcase-media"><img id="showcaseImg" src="" alt="Render Realista"></div>
+    </div>
+  </div>
+  <script>
+    const floorMapUrl = "https://drive.google.com/file/d/1qDwiDDY1NTEWoo8H6b1tt7683zY50rHa/view?usp=drive_link";
+    let floorWidth = 26;
+    let floorHeight = 43.57977883096366;
+    const architecturalAreas = [
+  {
+    "id": "cocina",
+    "name": "Cocina ",
+    "desc": "Isla de preparación comunicada con el salón.",
+    "x": -0.9,
+    "z": -8.95,
+    "w": 4.5,
+    "d": 4,
+    "h": 2,
+    "viewAngle": 360,
+    "renderUrl": "https://drive.google.com/file/d/1OSDlCRVWCXNTeVoZNQb4cMFlcgLRhu5k/view?usp=drive_link"
+  },
+  {
+    "id": "piscina",
+    "name": "Living",
+    "desc": "Espejo de agua principal con solárium y sector circular.",
+    "x": -0.05,
+    "z": 6.07,
+    "w": 7.5,
+    "d": 8.45,
+    "h": 0.5,
+    "viewAngle": 360,
+    "renderUrl": "https://drive.google.com/file/d/1Cp3ECV5SZH5fb1jJA35C6ykzHX0b86LG/view?usp=drive_link"
+  },
+  {
+    "id": "area_1787997953401",
+    "name": "Patio",
+    "desc": "Descripción del espacio arquitectónico.",
+    "x": -7.7,
+    "z": -15.55,
+    "w": 5.66,
+    "d": 4.86,
+    "h": 2,
+    "viewAngle": 210,
+    "renderUrl": "https://drive.google.com/file/d/1YcqsKI0qo_nbaRKSKG8zv9VZAw4q-EDD/view?usp=drive_link"
+  },
+  {
+    "id": "area_1787997971908",
+    "name": "Habitacion",
+    "desc": "Descripción del espacio arquitectónico.",
+    "x": 7.67,
+    "z": -16.08,
+    "w": 4.86,
+    "d": 5.51,
+    "h": 2,
+    "viewAngle": 150,
+    "renderUrl": "https://drive.google.com/file/d/1ckgFad4DzIMVCsapdD2K77wdHiC-yUmz/view?usp=drive_link"
+  },
+  {
+    "id": "area_1787998183243",
+    "name": "🍗",
+    "desc": "Descripción del espacio arquitectónico.",
+    "x": -0.34,
+    "z": -15.45,
+    "w": 4,
+    "d": 4,
+    "h": 2,
+    "viewAngle": 95,
+    "renderUrl": "https://drive.google.com/file/d/1trHDcYQmKmNdjob4wGs2Sj4Ku0KaFbLQ/view?usp=drive_link"
+  },
+  {
+    "id": "area_1787998288250",
+    "name": "Comedor",
+    "desc": "Descripción del espacio arquitectónico.",
+    "x": -0.76,
+    "z": -3.42,
+    "w": 4,
+    "d": 4,
+    "h": 2,
+    "viewAngle": 190,
+    "renderUrl": "https://drive.google.com/file/d/1IzCfYFz0OMSSy0AxcMqqujNXKZLMO3Gx/view?usp=drive_link"
+  }
+];
+
+    function formatDriveUrl(url) {
+      if (!url) return '';
+      if (url.includes('drive.google.com')) {
+        const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+        if (match && match[1]) return 'https://lh3.googleusercontent.com/d/' + match[1];
+      }
+      return url;
+    }
+
+    function getFitFrustumSize() {
+      const aspect = window.innerWidth / window.innerHeight;
+      const padding = 1.15;
+      const fitH = floorHeight * padding;
+      const fitW = (floorWidth * padding) / aspect;
+      return Math.max(fitH, fitW);
+    }
+
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x050505);
+
+    const aspect = window.innerWidth / window.innerHeight;
+    let frustumSize = getFitFrustumSize();
+    const camera = new THREE.OrthographicCamera((frustumSize * aspect) / -2, (frustumSize * aspect) / 2, frustumSize / 2, frustumSize / -2, 0.1, 1000);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.enableRotate = false;
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.85));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+    dirLight.position.set(15, 35, 15);
+    dirLight.castShadow = true;
+    scene.add(dirLight);
+
+    const textureLoader = new THREE.TextureLoader();
+    textureLoader.setCrossOrigin('anonymous');
+    let floorMat = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0.1 });
+    let floorGeo = new THREE.PlaneGeometry(floorWidth, floorHeight);
+    const floorPlane = new THREE.Mesh(floorGeo, floorMat);
+    floorPlane.rotation.x = -Math.PI / 2;
+    floorPlane.receiveShadow = true;
+    scene.add(floorPlane);
+
+    function updateFloorTexture(url) {
+      if (!url) return;
+      textureLoader.load(formatDriveUrl(url), (tex) => {
+        tex.anisotropy = 16;
+        floorMat.map = tex;
+        floorMat.needsUpdate = true;
+        if (tex.image && tex.image.width && tex.image.height) {
+          const imgAspect = tex.image.width / tex.image.height;
+          floorWidth = 26;
+          floorHeight = floorWidth / imgAspect;
+          floorPlane.geometry.dispose();
+          floorPlane.geometry = new THREE.PlaneGeometry(floorWidth, floorHeight);
+          updateCameraFrustum();
+          goToArea('general');
+        }
+      });
+    }
+
+    const volumeGroup = new THREE.Group();
+    scene.add(volumeGroup);
+    let interactiveMeshes = [];
+
+    function build3DVolumes() {
+      const navBar = document.getElementById('navBar');
+      navBar.innerHTML = '<button class="nav-btn active" onclick="goToArea(\'general\')">General</button>';
+      architecturalAreas.forEach(area => {
+        const geo = new THREE.BoxGeometry(area.w, area.h, area.d);
+        const mat = new THREE.MeshStandardMaterial({ color: 0x808080, transparent: true, opacity: 0.35, roughness: 0.2, depthWrite: false });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(area.x, area.h / 2, area.z);
+        mesh.rotation.set(0, 0, 0);
+        mesh.userData = area;
+
+        const edges = new THREE.EdgesGeometry(geo);
+        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x555555, transparent: true, opacity: 0.7 }));
+        mesh.add(line);
+        mesh.lineRef = line;
+
+        volumeGroup.add(mesh);
+        interactiveMeshes.push(mesh);
+
+        const btn = document.createElement('button');
+        btn.className = 'nav-btn';
+        btn.innerText = area.name.split('&')[0];
+        btn.onclick = () => goToArea(area.id);
+        navBar.appendChild(btn);
+      });
+    }
+
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    let hoveredMesh = null;
+    const tooltip = document.getElementById('tooltip');
+
+    window.addEventListener('mousemove', (e) => {
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      tooltip.style.left = e.clientX + 'px';
+      tooltip.style.top = e.clientY + 'px';
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(interactiveMeshes);
+      if (intersects.length > 0) {
+        const hit = intersects[0].object;
+        if (hoveredMesh !== hit) {
+          resetHover();
+          hoveredMesh = hit;
+          gsap.to(hoveredMesh.material, { opacity: 0.55, duration: 0.2 });
+          gsap.to(hoveredMesh.lineRef.material, { opacity: 1, duration: 0.2 });
+          document.body.style.cursor = 'pointer';
+        }
+        tooltip.innerText = hit.userData.name;
+        tooltip.style.opacity = '1';
+      } else {
+        resetHover();
+      }
+    });
+
+    function resetHover() {
+      if (hoveredMesh) {
+        gsap.to(hoveredMesh.material, { opacity: 0.22, duration: 0.2 });
+        gsap.to(hoveredMesh.lineRef.material, { opacity: 0.55, duration: 0.2 });
+      }
+      hoveredMesh = null;
+      document.body.style.cursor = 'default';
+      tooltip.style.opacity = '0';
+    }
+
+    window.addEventListener('click', () => {
+      if (hoveredMesh) goToArea(hoveredMesh.userData.id);
+    });
+
+    function goToArea(areaId) {
+      document.querySelectorAll('.nav-btn').forEach(b => {
+        b.classList.toggle('active', (areaId === 'general' && b.innerText === 'GENERAL') || b.innerText.toLowerCase().includes(areaId));
+      });
+
+      if (areaId === 'general') {
+        closeShowcase(false);
+        animateCamera({ x: 0, y: 35, z: 0.0001 }, { x: 0, y: 0, z: 0 }, 1.0, { x: 0, y: 0, z: -1 });
+        return;
+      }
+
+      const area = architecturalAreas.find(a => a.id === areaId);
+      if (!area) return;
+
+      const angle = (area.viewAngle !== undefined) ? area.viewAngle : 45;
+      const rad = (angle * Math.PI) / 180;
+      const targetCam = { x: area.x + 9.5 * Math.sin(rad), y: 7.5, z: area.z + 9.5 * Math.cos(rad) };
+      const targetFocus = { x: area.x, y: area.h / 2, z: area.z };
+
+      animateCamera(targetCam, targetFocus, 3.2, { x: 0, y: 1, z: 0 }, () => {
+        openShowcase(area);
+      });
+    }
+
+    function animateCamera(camPos, targetPos, zoomLevel, upVec, onComplete) {
+      if (upVec) camera.up.set(upVec.x, upVec.y, upVec.z);
+      gsap.to(camera.position, { x: camPos.x, y: camPos.y, z: camPos.z, duration: 1.3, ease: "power2.inOut" });
+      gsap.to(controls.target, { x: targetPos.x, y: targetPos.y, z: targetPos.z, duration: 1.3, ease: "power2.inOut" });
+      gsap.to(camera, { zoom: zoomLevel, duration: 1.3, ease: "power2.inOut", onUpdate: () => camera.updateProjectionMatrix(), onComplete: onComplete });
+    }
+
+    function openShowcase(area) {
+      document.getElementById('showcaseTitle').innerText = area.name;
+      document.getElementById('showcaseImg').src = formatDriveUrl(area.renderUrl);
+      document.getElementById('immersiveShowcase').classList.add('active');
+    }
+
+    function closeShowcase(returnToGeneral = true) {
+      document.getElementById('immersiveShowcase').classList.remove('active');
+      if (returnToGeneral) goToArea('general');
+    }
+
+    function handleBackdropClick(e) {
+      if (e.target.id === 'immersiveShowcase') closeShowcase(true);
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && document.getElementById('immersiveShowcase').classList.contains('active')) {
+        closeShowcase(true);
+      }
+    });
+
+    function updateCameraFrustum() {
+      const aspect = window.innerWidth / window.innerHeight;
+      frustumSize = getFitFrustumSize();
+      camera.left = (frustumSize * aspect) / -2;
+      camera.right = (frustumSize * aspect) / 2;
+      camera.top = frustumSize / 2;
+      camera.bottom = -frustumSize / 2;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    window.addEventListener('resize', updateCameraFrustum);
+    window.addEventListener('orientationchange', () => setTimeout(updateCameraFrustum, 200));
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', updateCameraFrustum);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    updateFloorTexture(floorMapUrl);
+    build3DVolumes();
+    goToArea('general');
+    animate();
+  </script>
+</body>
+</html>
