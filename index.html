@@ -7,7 +7,7 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #050505; color: #ffffff; }
-    #canvas-container { width: 100vw; height: 100vh; display: block; }
+    #canvas-container { width: 100vw; height: 100dvh; display: block; touch-action: none; }
     .top-bar { position: absolute; top: 20px; left: 20px; display: flex; align-items: center; gap: 12px; z-index: 20; }
     .brand-title { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; font-weight: 700; color: #ffffff; border: 1px solid #ffffff; padding: 8px 14px; background: #000000; }
     .map-labels-layer { position: absolute; inset: 0; pointer-events: none; z-index: 18; }
@@ -47,6 +47,23 @@
     .showcase-card .showcase-media { width: 100%; height: auto; background: transparent; border: 0; border-radius: 8px; }
     .showcase-card .showcase-media img { width: 100%; height: auto; object-fit: contain; display: block; }
     .showcase-card .showcase-copy { max-height: 12vh; }
+    @media (max-width: 700px) {
+      .top-bar { top: max(12px, env(safe-area-inset-top)); left: 12px; right: 12px; pointer-events: none; }
+      .brand-title { font-size: 10px; letter-spacing: 1.2px; padding: 8px 10px; }
+      .nav-bar { display: flex !important; bottom: calc(10px + env(safe-area-inset-bottom)); left: 10px; right: 10px; transform: none; max-width: none; gap: 4px; padding: 5px; scrollbar-width: thin; overscroll-behavior-x: contain; }
+      .nav-btn { min-height: 44px; padding: 10px 13px; font-size: 11px; flex: 0 0 auto; }
+      .map-area-label { font-size: max(10px, var(--label-font-size, 10px)); padding: 7px 8px; min-height: 30px; max-width: 105px; overflow: hidden; text-overflow: ellipsis; letter-spacing: .3px; }
+      .hover-preview-card, #tooltip { display: none !important; }
+      .immersive-showcase { height: 100dvh; padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom)); background: rgba(0,0,0,.5); }
+      .showcase-card { width: 100% !important; max-width: 100%; max-height: 100%; padding: 10px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+      .showcase-header { align-items: flex-start; }
+      .showcase-title { font-size: 14px; letter-spacing: 1px; }
+      .showcase-desc { font-size: 12px; }
+      .close-showcase-btn { min-height: 44px; padding: 8px 10px; letter-spacing: .4px; }
+      .showcase-media img { max-height: 60dvh; object-fit: contain; }
+      .showcase-card .showcase-copy { max-height: none; padding-bottom: 6px; }
+      .showcase-gallery-controls { gap: 4px; }
+    }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -143,6 +160,10 @@
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
     controls.enableRotate = (fixedViewMode === 'isometric');
+    controls.touches.ONE = THREE.TOUCH.PAN;
+    controls.touches.TWO = THREE.TOUCH.DOLLY_PAN;
+    controls.minZoom = 1;
+    controls.maxZoom = 5;
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.85));
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -205,6 +226,7 @@
         const btn = document.createElement('button');
         btn.className = 'nav-btn';
         btn.innerText = area.name.split('&')[0];
+        btn.dataset.areaId = area.id;
         btn.onclick = () => goToArea(area.id);
         navBar.appendChild(btn);
 
@@ -215,7 +237,7 @@
         label.onclick = (event) => { event.stopPropagation(); goToArea(area.id); };
         mapLabelsLayer.appendChild(label);
       });
-      navBar.style.display = labelsMode === 'bottom' ? 'flex' : 'none';
+      navBar.style.display = labelsMode === 'bottom' || window.innerWidth <= 700 ? 'flex' : 'none';
       mapLabelsLayer.style.display = labelsMode === 'map' ? 'block' : 'none';
       mapLabelsLayer.querySelectorAll('.map-area-label').forEach(label => {
         label.classList.toggle('text-only', labelStyle === 'text');
@@ -297,7 +319,21 @@
       hoverPreviewCard.classList.remove('visible');
     }
 
+    let pointerStart = null;
+    renderer.domElement.addEventListener('pointerdown', e => {
+      pointerStart = { x: e.clientX, y: e.clientY };
+    });
+    renderer.domElement.addEventListener('pointerup', e => {
+      if (!pointerStart || Math.hypot(e.clientX - pointerStart.x, e.clientY - pointerStart.y) > 8) return;
+      if (e.pointerType !== 'touch' || document.getElementById('immersiveShowcase').classList.contains('active')) return;
+      mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+      raycaster.setFromCamera(mouse, camera);
+      const hit = raycaster.intersectObjects(interactiveMeshes)[0];
+      if (hit) goToArea(hit.object.userData.id);
+      pointerStart = null;
+    });
     window.addEventListener('click', (event) => {
+      if (event.pointerType === 'touch') return;
       if (document.getElementById('immersiveShowcase').classList.contains('active') ||
           event.target.closest('.nav-bar, .map-area-label, .immersive-showcase')) return;
       if (hoveredMesh) goToArea(hoveredMesh.userData.id);
@@ -305,7 +341,7 @@
 
     function goToArea(areaId) {
       document.querySelectorAll('.nav-btn').forEach(b => {
-        b.classList.toggle('active', (areaId === 'general' && b.innerText === 'GENERAL') || b.innerText.toLowerCase().includes(areaId));
+        b.classList.toggle('active', areaId === (b.dataset.areaId || 'general'));
       });
 
       if (areaId === 'general') {
@@ -354,6 +390,7 @@
       if (!img.naturalWidth || !img.naturalHeight) return;
       const card = img.closest('.showcase-card');
       const ratio = img.naturalWidth / img.naturalHeight;
+      if (window.innerWidth <= 700) { card.style.width = ''; return; }
       let width = Math.min(window.innerWidth - 40, window.innerHeight * .76 * ratio + 22);
       for (let i = 0; i < 3; i++) {
         card.style.width = Math.max(1, width) + 'px';
@@ -418,7 +455,10 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
-    window.addEventListener('resize', updateCameraFrustum);
+    window.addEventListener('resize', () => {
+      updateCameraFrustum();
+      document.getElementById('navBar').style.display = labelsMode === 'bottom' || window.innerWidth <= 700 ? 'flex' : 'none';
+    });
 
     function animate() {
       requestAnimationFrame(animate);
