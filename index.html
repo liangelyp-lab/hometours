@@ -45,7 +45,7 @@
     .showcase-card .showcase-desc, .showcase-card .showcase-copy { color: #fff; text-shadow: 0 1px 3px #000; }
     .showcase-card .close-showcase-btn { background: rgba(20,25,30,.25); border-color: rgba(255,255,255,.5); border-radius: 8px; flex-shrink: 0; }
     .showcase-card .showcase-media { width: 100%; height: auto; background: transparent; border: 0; border-radius: 8px; }
-    .showcase-card .showcase-media img { width: 100%; height: auto; object-fit: contain; display: block; }
+    .showcase-card .showcase-media img { width: 100%; height: auto; max-height: calc(100dvh - 170px); object-fit: contain; display: block; }
     .showcase-card .showcase-copy { max-height: 12vh; }
     @media (max-width: 700px) {
       .top-bar { top: max(12px, env(safe-area-inset-top)); left: 12px; right: 12px; pointer-events: none; }
@@ -60,8 +60,8 @@
       .showcase-title { font-size: 14px; letter-spacing: 1px; }
       .showcase-desc { font-size: 12px; }
       .close-showcase-btn { min-height: 44px; padding: 8px 10px; letter-spacing: .4px; }
-      .showcase-media img { max-height: 60dvh; object-fit: contain; }
-      .showcase-card .showcase-copy { max-height: none; padding-bottom: 6px; }
+      .showcase-card .showcase-media img { max-height: min(60dvh, calc(100dvh - 190px)); object-fit: contain; }
+      .showcase-card .showcase-copy { max-height: 22dvh; overflow-y: auto; padding-bottom: 6px; }
       .showcase-gallery-controls { gap: 4px; }
     }
   </style>
@@ -459,6 +459,18 @@
       camera.right = (frustumSize * aspect) / 2;
       camera.top = frustumSize / 2;
       camera.bottom = -frustumSize / 2;
+      if (!document.getElementById('immersiveShowcase').classList.contains('active')) {
+        gsap.killTweensOf([camera.position, controls.target, camera]);
+        camera.zoom = 1;
+        controls.target.set(0, 0, 0);
+        if (fixedViewMode === 'topdown') {
+          camera.up.set(0, 0, -1);
+          camera.position.set(0, 35, 0.0001);
+        } else {
+          camera.up.set(0, 1, 0);
+          camera.position.set(22, 22, 22);
+        }
+      }
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     }
@@ -467,6 +479,14 @@
       updateCameraFrustum();
       document.getElementById('navBar').style.display = labelsMode === 'bottom' || window.innerWidth <= 700 ? 'flex' : 'none';
     });
+    window.addEventListener('pageshow', () => {
+      closeShowcase(false);
+      updateCameraFrustum();
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) updateCameraFrustum();
+    });
+    window.visualViewport?.addEventListener('resize', updateCameraFrustum);
 
     function animate() {
       requestAnimationFrame(animate);
