@@ -165,7 +165,7 @@
     const controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
-    controls.enableRotate = (fixedViewMode === 'isometric');
+    controls.enableRotate = false;
     controls.enableZoom = false;
     controls.enablePan = false;
 
@@ -264,6 +264,7 @@
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
     let hoveredMesh = null;
+    let lastTouchSelection = 0;
     const tooltip = document.getElementById('tooltip');
     const hoverPreviewCard = document.getElementById('hoverPreviewCard');
 
@@ -333,11 +334,14 @@
       mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
       raycaster.setFromCamera(mouse, camera);
       const hit = raycaster.intersectObjects(interactiveMeshes)[0];
-      if (hit) goToArea(hit.object.userData.id);
+      if (hit) {
+        lastTouchSelection = Date.now();
+        goToArea(hit.object.userData.id);
+      }
       pointerStart = null;
     });
     window.addEventListener('click', (event) => {
-      if (event.pointerType === 'touch') return;
+      if (event.pointerType === 'touch' || Date.now() - lastTouchSelection < 500) return;
       if (document.getElementById('immersiveShowcase').classList.contains('active') ||
           event.target.closest('.nav-bar, .map-area-label, .immersive-showcase')) return;
       if (hoveredMesh) goToArea(hoveredMesh.userData.id);
@@ -350,37 +354,14 @@
 
       if (areaId === 'general') {
         closeShowcase(false);
-        if (fixedViewMode === 'topdown') {
-          animateCamera({ x: 0, y: 35, z: 0.0001 }, { x: 0, y: 0, z: 0 }, 1.0, { x: 0, y: 0, z: -1 });
-        } else {
-          animateCamera({ x: 22, y: 22, z: 22 }, { x: 0, y: 0, z: 0 }, 1.0, { x: 0, y: 1, z: 0 });
-        }
+        updateCameraFrustum();
         return;
       }
 
       const area = architecturalAreas.find(a => a.id === areaId);
       if (!area) return;
-      if (window.innerWidth <= 700) {
-        openShowcase(area);
-        return;
-      }
-
-      const angle = (area.viewAngle !== undefined) ? area.viewAngle : 45;
-      const rad = (angle * Math.PI) / 180;
-      const targetCam = { x: area.x + 9.5 * Math.sin(rad), y: 7.5, z: area.z + 9.5 * Math.cos(rad) };
-      const targetFocus = { x: area.x, y: area.h / 2, z: area.z };
-
-      animateCamera(targetCam, targetFocus, 3.2, { x: 0, y: 1, z: 0 }, () => {
-        openShowcase(area);
-      });
-    }
-
-    function animateCamera(camPos, targetPos, zoomLevel, upVec, onComplete) {
-      gsap.killTweensOf([camera.position, controls.target, camera]);
-      if (upVec) camera.up.set(upVec.x, upVec.y, upVec.z);
-      gsap.to(camera.position, { x: camPos.x, y: camPos.y, z: camPos.z, duration: 0.45, ease: "power2.out" });
-      gsap.to(controls.target, { x: targetPos.x, y: targetPos.y, z: targetPos.z, duration: 0.45, ease: "power2.out" });
-      gsap.to(camera, { zoom: zoomLevel, duration: 0.45, ease: "power2.out", onUpdate: () => camera.updateProjectionMatrix(), onComplete: onComplete });
+      updateCameraFrustum();
+      openShowcase(area);
     }
 
     function openShowcase(area) {
@@ -430,18 +411,11 @@
       if (!activeShowcaseArea?.media?.length) return;
       activeShowcaseImageIndex = (activeShowcaseImageIndex + direction + activeShowcaseArea.media.length) % activeShowcaseArea.media.length;
       renderShowcaseContent();
-      const media = activeShowcaseArea.media[activeShowcaseImageIndex];
-      const rad = ((Number(media.angle) || 0) * Math.PI) / 180;
-      animateCamera(
-        { x: activeShowcaseArea.x + 9.5 * Math.sin(rad), y: 7.5, z: activeShowcaseArea.z + 9.5 * Math.cos(rad) },
-        { x: activeShowcaseArea.x, y: activeShowcaseArea.h / 2, z: activeShowcaseArea.z },
-        3.2,
-        { x: 0, y: 1, z: 0 }
-      );
     }
 
     function closeShowcase(returnToGeneral = true) {
       document.getElementById('immersiveShowcase').classList.remove('active');
+      activeShowcaseArea = null;
       if (returnToGeneral) goToArea('general');
     }
 
@@ -459,17 +433,14 @@
       camera.right = (frustumSize * aspect) / 2;
       camera.top = frustumSize / 2;
       camera.bottom = -frustumSize / 2;
-      if (!document.getElementById('immersiveShowcase').classList.contains('active')) {
-        gsap.killTweensOf([camera.position, controls.target, camera]);
-        camera.zoom = 1;
-        controls.target.set(0, 0, 0);
-        if (fixedViewMode === 'topdown') {
-          camera.up.set(0, 0, -1);
-          camera.position.set(0, 35, 0.0001);
-        } else {
-          camera.up.set(0, 1, 0);
-          camera.position.set(22, 22, 22);
-        }
+      camera.zoom = 1;
+      controls.target.set(0, 0, 0);
+      if (fixedViewMode === 'topdown') {
+        camera.up.set(0, 0, -1);
+        camera.position.set(0, 35, 0.0001);
+      } else {
+        camera.up.set(0, 1, 0);
+        camera.position.set(22, 22, 22);
       }
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
@@ -480,8 +451,7 @@
       document.getElementById('navBar').style.display = labelsMode === 'bottom' || window.innerWidth <= 700 ? 'flex' : 'none';
     });
     window.addEventListener('pageshow', () => {
-      closeShowcase(false);
-      updateCameraFrustum();
+      goToArea('general');
     });
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) updateCameraFrustum();
